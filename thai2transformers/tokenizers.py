@@ -19,11 +19,16 @@ from functools import partial
 
 
 try:
-    from thai2transformers.scripts.helper import get_file_size, multi_imap
-except ModuleNotFoundError:
-    import sys
-    sys.path.append(f'{os.path.dirname(os.path.realpath(__file__))}/../scripts')
-    from thai2transformers.scripts.helper import get_file_size, multi_imap
+    from helper import get_file_size, multi_imap
+except (ModuleNotFoundError, ImportError) as e:
+    if isinstance(e, ModuleNotFoundError):
+        import sys
+        sys.path.append(f'{os.path.dirname(os.path.realpath(__file__))}/../scripts')
+        from helper import get_file_size, multi_imap
+    elif isinstance(e, ImportError):
+        import sys
+        sys.path.append(f'{os.path.dirname(os.path.realpath(__file__))}/..')
+        from scripts.helper import get_file_size, multi_imap
 
 logger = logging.getLogger()
 
