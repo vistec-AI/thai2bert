@@ -20,7 +20,7 @@ from functools import partial
 
 try:
     from helper import get_file_size, multi_imap
-except ModuleNotFoundError:
+except (ModuleNotFoundError, ImportError):
     import sys
     sys.path.append(f'{os.path.dirname(os.path.realpath(__file__))}/../scripts')
     from helper import get_file_size, multi_imap
