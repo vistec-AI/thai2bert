@@ -22,7 +22,7 @@ try:
     from helper import get_file_size, multi_imap
 except (ModuleNotFoundError, ImportError):
     import sys
-    sys.path.append(f'{os.path.dirname(os.path.realpath(__file__))}/../scripts')
+    sys.path.append('../scripts')  # path hacking
     from helper import get_file_size, multi_imap
 
 logger = logging.getLogger()
