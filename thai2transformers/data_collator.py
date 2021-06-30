@@ -43,7 +43,7 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
         
         if self.max_preds_per_seq is None:
             self.max_preds_per_seq = math.ceil(self.max_seq_len * self.mlm_probability / 10) * 10
-            self.mask_window = int(1 / self.mlm_probability) # make ngrams per window sized context
+            self.mask_window = torch.FloatTensor([float(1 / self.mlm_probability)]) # make ngrams per window sized context
         self.vocab_words = list(self.tokenizer.get_vocab().keys())
         self.vocab_mapping = self.tokenizer.get_vocab()
         
@@ -52,12 +52,6 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
     
         _pvals = 1. / np.arange(1, self.max_gram + 1)
         self.pvals = torch.Tensor(_pvals / _pvals.sum(keepdims=True))
-        self.ngram_median  = self.ngrams[math.ceil(float(len(self.ngrams) / 2))]
-
-        if self.pad_to_multiple_of is not None:
-            self._base_ctx_size = torch.LongTensor([(self.ngram_median * self.mask_window) - ((self.ngram_median * self.mask_window) % self.pad_to_multiple_of)])
-        else:
-            self._base_ctx_size = torch.LongTensor([self.ngram_median * self.mask_window])
 
 
     def mask_tokens(
@@ -85,7 +79,7 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
         while offset < SEQ_LEN:
 
             n = torch.multinomial(self.pvals, inputs.shape[0], replacement=True) + 1
-            ctx_size = torch.min(self._base_ctx_size, SEQ_LEN - offset)
+            ctx_size = torch.min(torch.round(n *  self.mask_window).type(torch.LongTensor), SEQ_LEN - offset)
 
             if c == 0:
                 _sub_masked_indices = masked_indices[:, offset+1: offset+1+ctx_size]
