@@ -97,7 +97,6 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
             start = torch.argmax(_sub_masked_indices_rand, dim=-1)
             end = torch.min(start + n, ctx_size)
                
-            start = torch.argmax(_sub_masked_indices_rand, dim=-1)
             indices = torch.stack((start, end), dim=-1)
 
             for i, ind in enumerate(indices):
