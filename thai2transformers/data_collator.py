@@ -26,82 +26,38 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
     mlm: bool = True
     mlm_probability: float = 0.15
     max_gram: int = 3
-    keep_prob: float = 0.0
-    mask_prob: float = 1.0
+    pad_to_multiple_of: Optional[int] = None
     max_preds_per_seq: int = None
     max_seq_len: int = 510
-    pad_to_multiple_of: Optional[int] = None
 
-    def __init__(self, tokenizer, mlm=True, mlm_probability=0.15, pad_to_multiple_of=None, *args, **kwargs):
-        super().__init__(tokenizer, mlm=mlm, mlm_probability=mlm_probability, pad_to_multiple_of=pad_to_multiple_of)
+    def __new__(cls, tokenizer, mlm, mlm_probability, pad_to_multiple_of, *args, **kwargs):
+    
+        obj = object.__new__(cls)
+        DataCollatorForLanguageModeling.__init__(obj, tokenizer=tokenizer, mlm=mlm,
+                                                 mlm_probability=mlm_probability,
+                                                 pad_to_multiple_of=pad_to_multiple_of)
+        return obj
+    
 
-        assert self.mask_prob + self.keep_prob <= 1, \
-            f'The prob of using [MASK]({self.mask_prob}) and the prob of using original token({self.keep_prob}) should between [0,1]'
-
+    def __post_init__(self, *args, **kwargs):
+        
         if self.max_preds_per_seq is None:
             self.max_preds_per_seq = math.ceil(self.max_seq_len * self.mlm_probability / 10) * 10
             self.mask_window = int(1 / self.mlm_probability) # make ngrams per window sized context
         self.vocab_words = list(self.tokenizer.get_vocab().keys())
         self.vocab_mapping = self.tokenizer.get_vocab()
         
-        self.special_tokens = [ self.tokenizer.special_tokens_map[special_token_name] \
-                                for special_token_name in SPECIAL_TOKEN_NAMES]
-    
+        self.special_token_ids = [ self.vocab_mapping[self.tokenizer.special_tokens_map[name]] for name in  SPECIAL_TOKEN_NAMES]
         self.ngrams = np.arange(1, self.max_gram + 1, dtype=np.int64)
+    
         _pvals = 1. / np.arange(1, self.max_gram + 1)
-        self.pvals = _pvals / _pvals.sum(keepdims=True)
+        self.pvals = torch.Tensor(_pvals / _pvals.sum(keepdims=True))
+        self.ngram_median  = self.ngrams[math.ceil(float(len(self.ngrams) / 2))]
 
-    def _choice(self, rng, data, p):
-        cul = np.cumsum(p)
-        x = rng.random()*cul[-1]
-        id = bisect(cul, x)
-        return data[id]
-
-    def _per_token_mask(self, idx, tokens, rng, mask_prob, keep_prob):
-        label = tokens[idx]
-        mask = self.tokenizer.mask_token
-        rand = rng.random()
-        if rand < mask_prob:
-            new_label = mask
-        elif rand < mask_prob + keep_prob:
-            new_label = label
+        if self.pad_to_multiple_of is not None:
+            self._base_ctx_size = torch.LongTensor([(self.ngram_median * self.mask_window) - ((self.ngram_median * self.mask_window) % self.pad_to_multiple_of)])
         else:
-            new_label = rng.choice(self.vocab_words)
-
-        tokens[idx] = new_label
-
-        return label
-
-    def _mask_tokens(self, tokens: List[str], rng=random, **kwargs):
-
-        indices = [i for i in range(len(tokens)) if tokens[i] not in self.special_tokens]
-        unigrams = [ [idx] for idx in indices ]
-        num_to_predict = min(self.max_preds_per_seq, max(1, int(round(len(tokens) * self.mlm_probability))))
-           
-        offset = 0
-        mask_grams = np.array([False]*len(unigrams))
-        while offset < len(unigrams):
-            n = self._choice(rng, self.ngrams, p=self.pvals)
-            ctx_size = min(n * self.mask_window, len(unigrams)-offset)
-            m = rng.randint(0, ctx_size-1)
-            s = offset + m
-            e = min(offset + m + n, len(unigrams))
-            offset = max(offset+ctx_size, e)
-            mask_grams[s:e] = True
-
-        target_labels = [None]*len(tokens)
-        w_cnt = 0
-        for m,word in zip(mask_grams, unigrams):
-            if m:
-                for idx in word:
-                    label = self._per_token_mask(idx, tokens, rng, self.mask_prob, self.keep_prob)
-                    target_labels[idx] = label
-                    w_cnt += 1
-                if w_cnt >= num_to_predict:
-                    break
-
-        target_labels = [self.vocab_mapping[x] if x else -100 for x in target_labels]
-        return tokens, target_labels
+            self._base_ctx_size = torch.LongTensor([self.ngram_median * self.mask_window])
 
 
     def mask_tokens(
@@ -110,15 +66,53 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
         """
         Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original.
         """
-        labels = []
-        inputs_masked = []
+
+        SEQ_LEN = torch.LongTensor([inputs.shape[1]])
         
-        for input in inputs:
-            input_tokens = self.tokenizer.convert_ids_to_tokens(input)
-            input_masked, _labels = self._mask_tokens(input_tokens)
-            input_masked_ids = self.tokenizer.convert_tokens_to_ids(input_masked)
-            inputs_masked.append(input_masked_ids)
-            
-            labels.append(_labels)
-      
-        return torch.LongTensor(inputs_masked), torch.LongTensor(labels)
+        labels = inputs.clone()
+        masked_indices = torch.zeros(inputs.shape).bool()
+        _masked_indices_rand = torch.rand(inputs.shape)
+        if special_tokens_mask is None:
+            special_tokens_mask = sum(inputs==i for i in self.special_token_ids).bool()
+
+        else:
+            special_tokens_mask = special_tokens_mask.bool()
+
+        _masked_indices_rand.masked_fill_(special_tokens_mask, value=-1.0)
+
+        offset = torch.LongTensor([0])
+        c =0
+        while offset < SEQ_LEN:
+
+            n = torch.multinomial(self.pvals, inputs.shape[0], replacement=True) + 1
+            ctx_size = torch.min(self._base_ctx_size, SEQ_LEN - offset)
+
+            if c == 0:
+                _sub_masked_indices = masked_indices[:, offset+1: offset+1+ctx_size]
+                _sub_masked_indices_rand = _masked_indices_rand[:, offset+1: offset+1+ctx_size]
+            else:
+                _sub_masked_indices = masked_indices[:, offset: offset+ctx_size]
+                _sub_masked_indices_rand = _masked_indices_rand[:, offset: offset+ctx_size]
+
+            start = torch.argmax(_sub_masked_indices_rand, dim=-1)
+            end = torch.min(start + n, ctx_size)
+               
+            start = torch.argmax(_sub_masked_indices_rand, dim=-1)
+            indices = torch.stack((start, end), dim=-1)
+
+            for i, ind in enumerate(indices):
+                _sub_masked_indices[i,ind[0]:ind[1]] = True
+                
+            if c == 0:
+                offset += ctx_size + 1
+            else:
+                offset += ctx_size
+            c+=1
+
+        masked_indices[special_tokens_mask] = False
+
+        labels[~masked_indices] = -100
+        
+        inputs[masked_indices] = self.tokenizer.mask_token_id
+
+        return inputs, labels
