@@ -3,10 +3,8 @@ from typing import List, Dict, Union, Optional, Tuple, Any
 from dataclasses import dataclass
 import numpy as np
 import torch
-import random
-from bisect import bisect
-from transformers.data.data_collator import DataCollatorForLanguageModeling, _collate_batch, tolist
-from transformers.tokenization_utils_base import BatchEncoding, PreTrainedTokenizerBase
+from transformers.data.data_collator import DataCollatorForLanguageModeling
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 SPECIAL_TOKEN_NAMES = ['bos_token', 'eos_token',
                        'sep_token', 'cls_token', 'pad_token']
@@ -43,16 +41,12 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
     def __post_init__(self, *args, **kwargs):
 
         if self.max_preds_per_seq is None:
-            self.max_preds_per_seq = math.ceil(
-                self.max_seq_len * self.mlm_probability / 10) * 10
-            # make ngrams per window sized context
-            self.mask_window = torch.FloatTensor(
-                [float(1 / self.mlm_probability)])
+            self.max_preds_per_seq = math.ceil(self.max_seq_len * self.mlm_probability / 10) * 10 # make ngrams per window sized context
+            self.mask_window = torch.FloatTensor([float(1 / self.mlm_probability)])
         self.vocab_words = list(self.tokenizer.get_vocab().keys())
         self.vocab_mapping = self.tokenizer.get_vocab()
 
-        self.special_token_ids = [
-            self.vocab_mapping[self.tokenizer.special_tokens_map[name]] for name in SPECIAL_TOKEN_NAMES]
+        self.special_token_ids = [self.vocab_mapping[self.tokenizer.special_tokens_map[name]] for name in SPECIAL_TOKEN_NAMES]
         self.ngrams = np.arange(1, self.max_gram + 1, dtype=np.int64)
 
         _pvals = 1. / np.arange(1, self.max_gram + 1)
@@ -71,9 +65,7 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
         masked_indices = torch.zeros(inputs.shape).bool()
         _masked_indices_rand = torch.rand(inputs.shape)
         if special_tokens_mask is None:
-            special_tokens_mask = sum(
-                inputs == i for i in self.special_token_ids).bool()
-
+            special_tokens_mask = sum(inputs == i for i in self.special_token_ids).bool()
         else:
             special_tokens_mask = special_tokens_mask.bool()
 
@@ -112,7 +104,6 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
         masked_indices[special_tokens_mask] = False
 
         labels[~masked_indices] = -100
-
         inputs[masked_indices] = self.tokenizer.mask_token_id
 
         return inputs, labels
