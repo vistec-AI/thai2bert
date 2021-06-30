@@ -77,8 +77,7 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
 
             n = torch.multinomial(
                 self.pvals, inputs.shape[0], replacement=True) + 1
-            ctx_size = torch.min(torch.round(
-                n * self.mask_window).type(torch.LongTensor), SEQ_LEN - offset)
+            ctx_size = torch.min(torch.ceil( n * self.mask_window).type(torch.LongTensor), SEQ_LEN - offset)
 
             if c == 0:
                 _sub_masked_indices = masked_indices[:, offset+1:offset+1+ctx_size]
