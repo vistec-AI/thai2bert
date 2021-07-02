@@ -14,9 +14,9 @@ SPECIAL_TOKEN_NAMES = ['bos_token', 'eos_token',
 class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
     """
     Data collator used for span-level masked language modeling
-
+     
     adapted from NGramMaskGenerator class
-
+    
     https://github.com/microsoft/DeBERTa/blob/11fa20141d9700ba2272b38f2d5fce33d981438b/DeBERTa/apps/tasks/mlm_task.py#L36
     and
     https://github.com/zihangdai/xlnet/blob/0b642d14dd8aec7f1e1ecbf7d6942d5faa6be1f0/data_utils.py
@@ -27,82 +27,107 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
     mlm_probability: float = 0.15
     max_gram: int = 3
     pad_to_multiple_of: Optional[int] = None
-    max_preds_per_seq: int = None
     max_seq_len: int = 510
 
     def __new__(cls, tokenizer, mlm, mlm_probability, pad_to_multiple_of, *args, **kwargs):
-
+    
         obj = object.__new__(cls)
         DataCollatorForLanguageModeling.__init__(obj, tokenizer=tokenizer, mlm=mlm,
                                                  mlm_probability=mlm_probability,
                                                  pad_to_multiple_of=pad_to_multiple_of)
         return obj
+    
 
     def __post_init__(self, *args, **kwargs):
-
-        if self.max_preds_per_seq is None:
-            self.max_preds_per_seq = math.ceil(self.max_seq_len * self.mlm_probability / 10) * 10 # make ngrams per window sized context
-            self.mask_window = torch.FloatTensor([float(1 / self.mlm_probability)])
+        
         self.vocab_words = list(self.tokenizer.get_vocab().keys())
         self.vocab_mapping = self.tokenizer.get_vocab()
-
-        self.special_token_ids = [self.vocab_mapping[self.tokenizer.special_tokens_map[name]] for name in SPECIAL_TOKEN_NAMES]
+        
+        self.special_token_ids = [ self.vocab_mapping[self.tokenizer.special_tokens_map[name]] for name in  SPECIAL_TOKEN_NAMES]
         self.ngrams = np.arange(1, self.max_gram + 1, dtype=np.int64)
-
         _pvals = 1. / np.arange(1, self.max_gram + 1)
         self.pvals = torch.Tensor(_pvals / _pvals.sum(keepdims=True))
 
-    def mask_tokens(
-        self, inputs: torch.Tensor, special_tokens_mask: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original.
-        """
 
-        SEQ_LEN = torch.LongTensor([inputs.shape[1]])
+    def filter_indices(self, base_indices, to_be_filtered_indices):      
+
+        to_filter_indices = to_be_filtered_indices[:,1].tolist()
+        
+        keep_indices = list(set(range(base_indices.shape[0])).difference(set(to_filter_indices)))
+
+        base_indices_filtered = torch.index_select(base_indices, dim=0, index=torch.LongTensor(keep_indices))
+
+        if len(to_filter_indices) == 0:
+            return base_indices_filtered, None
+        
+        base_indices_selected = torch.index_select(base_indices, dim=0, index=torch.LongTensor(to_filter_indices))
+
+        return base_indices_filtered, base_indices_selected
+
+
+    def mask_tokens(self, inputs: torch.Tensor,
+                    special_tokens_mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
 
         labels = inputs.clone()
-        masked_indices = torch.zeros(inputs.shape).bool()
-        _masked_indices_rand = torch.rand(inputs.shape)
+        labels_to_be_mask = torch.full(inputs.shape, 0.).bool()
+           
         if special_tokens_mask is None:
-            special_tokens_mask = sum(inputs == i for i in self.special_token_ids).bool()
+            special_tokens_mask = sum(inputs==i for i in self.special_token_ids).bool()
         else:
             special_tokens_mask = special_tokens_mask.bool()
 
-        _masked_indices_rand.masked_fill_(special_tokens_mask, value=-1.0)
+        K = len(self.pvals)
+        mask_indices_by_span_len = [[] for i in range(K)]
 
-        offset = torch.LongTensor([0])
-        c = 0
-        while offset < SEQ_LEN:
+        probability_matrix = torch.full(inputs.shape, self.mlm_probability)
+        base_masked_indices = torch.bernoulli(probability_matrix).bool()
 
-            n = torch.multinomial(
-                self.pvals, inputs.shape[0], replacement=True) + 1
-            ctx_size = torch.min(torch.ceil( n * self.mask_window).type(torch.LongTensor), SEQ_LEN - offset)
+        base_indices = (base_masked_indices == True).nonzero(as_tuple=False)
 
-            if c == 0:
-                _sub_masked_indices = masked_indices[:, offset+1:offset+1+ctx_size]
-                _sub_masked_indices_rand = _masked_indices_rand[:, offset+1:offset+1+ctx_size]
+
+        _filter_base_indices = base_indices.clone()
+        for k in range(1, K):
+
+            _probabilty_matrix = torch.full((1, _filter_base_indices.shape[0]), self.pvals[k])
+
+            _masked_indices = torch.bernoulli(second_probabilty_matrix).bool()
+
+            to_be_filtered_indices = (_masked_indices == True).nonzero(as_tuple=False)
+
+            _filter_base_indices, _indices_selected = filter_indices(_filter_base_indices, to_be_filtered_indices)
+
+            if _indices_selected == None:
+                mask_indices_by_span_len[k] = torch.LongTensor([])
             else:
-                _sub_masked_indices = masked_indices[:, offset:offset+ctx_size]
-                _sub_masked_indices_rand = _masked_indices_rand[:, offset:offset+ctx_size]
+                mask_indices_by_span_len[k] = _indices_selected
+        
+        mask_indices_by_span_len[0] = _filter_base_indices
+        
+        # Applying span-level masking
+        accum_indices = [[],[]]
+        max_seq_len = inputs.shape[1] - 1
 
-            start = torch.argmax(_sub_masked_indices_rand, dim=-1)
-            end = torch.min(start + n, ctx_size)
+        for k in range(0, K):
 
-            indices = torch.stack((start, end), dim=-1)
-
-            for i, ind in enumerate(indices):
-                _sub_masked_indices[i, ind[0]:ind[1]] = True
-
-            if c == 0:
-                offset += ctx_size + 1
+            list_of_indices = mask_indices_by_span_len[k]
+            if list_of_indices.shape == (0,):
+                continue
             else:
-                offset += ctx_size
-            c += 1
+                for j in range(k+1):
+                    max_indices = torch.full((list_of_indices.shape[0],), max_seq_len).long()
+                    left, right = (list_of_indices[:, 0], \
+                                   torch.min(list_of_indices[:, 1] + j, max_indices))
 
-        masked_indices[special_tokens_mask] = False
+                    accum_indices[0].append(left)
+                    accum_indices[1].append(right)
 
-        labels[~masked_indices] = -100
-        inputs[masked_indices] = self.tokenizer.mask_token_id
+        accum_indices_flatten  = (torch.cat(accum_indices[0]), torch.cat(accum_indices[1]))
 
+        labels_to_be_mask.index_put_(accum_indices_flatten, torch.tensor([1.]).bool())
+
+
+        labels_to_be_mask.masked_fill_(special_tokens_mask, value=0.0).bool()
+        inputs[labels_to_be_mask] = self.tokenizer.mask_token_id
+        labels[~labels_to_be_mask] = -100  # We only compute loss on masked token
+        
         return inputs, labels
