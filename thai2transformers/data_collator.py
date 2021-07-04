@@ -90,11 +90,11 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
 
             _probabilty_matrix = torch.full((1, _filter_base_indices.shape[0]), self.pvals[k])
 
-            _masked_indices = torch.bernoulli(second_probabilty_matrix).bool()
+            _masked_indices = torch.bernoulli(_probabilty_matrix).bool()
 
             to_be_filtered_indices = (_masked_indices == True).nonzero(as_tuple=False)
 
-            _filter_base_indices, _indices_selected = filter_indices(_filter_base_indices, to_be_filtered_indices)
+            _filter_base_indices, _indices_selected = self.filter_indices(_filter_base_indices, to_be_filtered_indices)
 
             if _indices_selected == None:
                 mask_indices_by_span_len[k] = torch.LongTensor([])
