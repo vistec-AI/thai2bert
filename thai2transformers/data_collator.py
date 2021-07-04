@@ -69,7 +69,7 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
                     special_tokens_mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
 
         labels = inputs.clone()
-        labels_to_be_mask = torch.full(inputs.shape, 0., dtype=torch.bool)
+        labels_to_be_mask = torch.full(inputs.shape, 0.).bool()
            
         if special_tokens_mask is None:
             special_tokens_mask = sum(inputs==i for i in self.special_token_ids).bool()
@@ -79,7 +79,7 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
         K = len(self.pvals)
         mask_indices_by_span_len = [[] for i in range(K)]
 
-        probability_matrix = torch.full(inputs.shape, self.mlm_probability, dtype=torch.float)
+        probability_matrix = torch.full(inputs.shape, self.mlm_probability)
         base_masked_indices = torch.bernoulli(probability_matrix).bool()
 
         base_indices = (base_masked_indices == True).nonzero(as_tuple=False)
@@ -88,7 +88,7 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
         _filter_base_indices = base_indices.clone()
         for k in range(1, K):
 
-            _probabilty_matrix = torch.full((1, _filter_base_indices.shape[0]), self.pvals[k], dtype=torch.float)
+            _probabilty_matrix = torch.full((1, _filter_base_indices.shape[0]), self.pvals[k])
 
             _masked_indices = torch.bernoulli(_probabilty_matrix).bool()
 
@@ -114,7 +114,7 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
                 continue
             else:
                 for j in range(k+1):
-                    max_indices = torch.full((list_of_indices.shape[0],), max_seq_len, dtype=torch.long)
+                    max_indices = torch.full((list_of_indices.shape[0],), max_seq_len).long()
                     left, right = (list_of_indices[:, 0], \
                                    torch.min(list_of_indices[:, 1] + j, max_indices))
 
