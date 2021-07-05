@@ -77,13 +77,14 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
 
             n = torch.FloatTensor([torch.multinomial(self.pvals, 1, replacement=True) + 1])
             ctx_size = torch.min(torch.ceil( n * self.mask_window).type(torch.LongTensor), SEQ_LEN - offset)
-
+            
             if c == 0:
-                _sub_masked_indices = masked_indices[:, offset+1:offset+1+ctx_size]
-                _sub_masked_indices_rand = _masked_indices_rand[:, offset+1:offset+1+ctx_size]
+                _sub_masked_indices = masked_indices[:, offset+1: offset+1+ctx_size]
+                _sub_masked_indices_rand = _masked_indices_rand[:, offset+1: offset+1+ctx_size]
             else:
-                _sub_masked_indices = masked_indices[:, offset:offset+ctx_size]
-                _sub_masked_indices_rand = _masked_indices_rand[:, offset:offset+ctx_size]
+                _sub_masked_indices = masked_indices[:, offset: offset+ctx_size]
+                _sub_masked_indices_rand = _masked_indices_rand[:, offset: offset+ctx_size]
+
 
             start = torch.argmax(_sub_masked_indices_rand, dim=-1)
             end = torch.min(start + n, ctx_size)
