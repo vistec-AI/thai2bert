@@ -27,7 +27,6 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
     mlm_probability: float = 0.15
     max_gram: int = 3
     pad_to_multiple_of: Optional[int] = None
-    max_seq_len: int = 510
 
     def __new__(cls, tokenizer, mlm, mlm_probability, pad_to_multiple_of, *args, **kwargs):
     
