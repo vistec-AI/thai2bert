@@ -79,6 +79,8 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
         mask_indices_by_span_len = [[] for i in range(K)]
 
         probability_matrix = torch.full(inputs.shape, self.mlm_probability, dtype=torch.float)
+        probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
+
         base_masked_indices = torch.bernoulli(probability_matrix).bool()
 
         base_indices = (base_masked_indices == True).nonzero(as_tuple=False)
@@ -124,8 +126,6 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
 
         labels_to_be_mask.index_put_(accum_indices_flatten, torch.tensor([1.]).bool())
 
-
-        labels_to_be_mask.masked_fill_(special_tokens_mask, value=0.0).bool()
         inputs[labels_to_be_mask] = self.tokenizer.mask_token_id
         labels[~labels_to_be_mask] = -100  # We only compute loss on masked token
         
