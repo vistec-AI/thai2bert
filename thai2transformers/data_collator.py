@@ -47,7 +47,6 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
         _pvals = 1. / np.arange(1, self.max_gram + 1)
         self.pvals = torch.Tensor(_pvals / _pvals.sum(keepdims=True))
 
-
     def filter_indices(self, base_indices, to_be_filtered_indices):      
 
         to_filter_indices = to_be_filtered_indices[:,1].tolist()
@@ -87,7 +86,7 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
 
 
         _filter_base_indices = base_indices.clone()
-        for k in range(1, K):
+        for k in range(0, K):
 
             _probabilty_matrix = torch.full((1, _filter_base_indices.shape[0]), self.pvals[k], dtype=torch.float)
 
@@ -102,7 +101,6 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
             else:
                 mask_indices_by_span_len[k] = _indices_selected
         
-        mask_indices_by_span_len[0] = _filter_base_indices
         
         # Applying span-level masking
         accum_indices = [[],[]]
