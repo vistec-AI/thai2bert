@@ -193,7 +193,6 @@ def main():
                             mlm_probability=data_args.mlm_probability,
                             pad_to_multiple_of=data_args.pad_to_multiple_of,
                             max_gram=data_args.span_mlm_max_gram,
-                            max_seq_len=data_args.train_max_length
                         )
     else:
         raise ArgumentError('data_args.mlm_strategy specified is not in avaialble stratefy (%s))', list(DATA_COLLATOR_CLASS_MAPPING.keys()))
