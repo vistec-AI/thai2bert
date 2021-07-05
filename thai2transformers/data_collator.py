@@ -120,10 +120,13 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
                     accum_indices[0].append(left)
                     accum_indices[1].append(right)
 
-        accum_indices_flatten  = (torch.cat(accum_indices[0]), torch.cat(accum_indices[1]))
+        accum_indices[0] = list(filter(lambda x: x.shape != (0,), accum_indices[0]))
+        accum_indices[1] = list(filter(lambda x: x.shape != (0,), accum_indices[1]))
+        if len(accum_indices[0]) != 0: 
+            accum_indices_flatten  = (torch.cat(accum_indices[0]), torch.cat(accum_indices[1]))
+            labels_to_be_mask.index_put_(accum_indices_flatten, torch.tensor([1.]).bool())
+            labels_to_be_mask.masked_fill_(special_tokens_mask, value=0.0).bool()
 
-        labels_to_be_mask.index_put_(accum_indices_flatten, torch.tensor([1.]).bool())
-        labels_to_be_mask.masked_fill_(special_tokens_mask, value=0.0).bool()
         inputs[labels_to_be_mask] = self.tokenizer.mask_token_id
         labels[~labels_to_be_mask] = -100  # We only compute loss on masked token
         
