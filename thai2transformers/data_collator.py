@@ -75,8 +75,7 @@ class DataCollatorForSpanLevelMask(DataCollatorForLanguageModeling):
         c = 0
         while offset < SEQ_LEN:
 
-            n = torch.multinomial(
-                self.pvals, inputs.shape[0], replacement=True) + 1
+            n = torch.FloatTensor([torch.multinomial(self.pvals, 1, replacement=True) + 1])
             ctx_size = torch.min(torch.ceil( n * self.mask_window).type(torch.LongTensor), SEQ_LEN - offset)
 
             if c == 0:
