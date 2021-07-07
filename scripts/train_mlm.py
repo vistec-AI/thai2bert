@@ -170,9 +170,12 @@ def main():
 
 
     if data_args.checkpoint_dir != None:
-        print(f'\n[INFO] Load pretrianed model (state_dict) from checkpoint: {data_args.checkpoint_dir}')
+        if is_main_process(training_args.local_rank):
+            print(f'\n[INFO] Load pretrianed model (state_dict) from checkpoint: {data_args.checkpoint_dir}')
         model = AutoModelForMaskedLM.from_pretrained(data_args.checkpoint_dir)
     else:
+        if is_main_process(training_args.local_rank):
+            print(f'\nInitailize weights')
         model = AutoModelForMaskedLM.from_config(config=config)
 
     # Load dataset
