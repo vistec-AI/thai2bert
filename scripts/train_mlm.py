@@ -170,7 +170,7 @@ def main():
 
 
     if data_args.checkpoint_dir != None:
-        logger.info(f'\n[INFO] Load pretrianed model (state_dict) from checkpoint: {data_args.checkpoint_dir}')
+        print(f'\n[INFO] Load pretrianed model (state_dict) from checkpoint: {data_args.checkpoint_dir}')
         model = AutoModelForMaskedLM.from_pretrained(data_args.checkpoint_dir)
     else:
         model = AutoModelForMaskedLM.from_config(config=config)
