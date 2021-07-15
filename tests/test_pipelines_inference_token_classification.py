@@ -38,7 +38,7 @@ class TokenClassificationPipelineTest(unittest.TestCase):
                         'airesearch/wangchanberta-base-att-spm-uncased',
                         revision='finetuned@lst20-ner'
                     ),
-                    scheme='BIOE',
+                    scheme='IOBE',
                     tag_delimiter='_',
         )
         self.lst20_pos_pipeline = TokenClassificationPipeline(
@@ -424,6 +424,35 @@ class TokenClassificationPipelineTest(unittest.TestCase):
         actual = pipeline._group_entities(input_ner_tags)
         self.assertEqual(actual, expected)
 
+
+    def test_ner_ungroup_fix_incorrect_tags_1(self):
+        space_token =  '<_>'
+        pipeline = self.thainer_ner_pipeline
+        pipeline.space_token = space_token
+        pipeline.lowercase = True
+        pipeline.group_entities = False
+        pipeline.strict = False
+        
+        input_tags = [ 'I-LOCATION',
+            'I-PERSON',
+            'O',
+            'O',
+            'I-PERSON',
+            'I-PERSON',
+        ]
+        expected = [ 'B-LOCATION',
+            'B-PERSON',
+            'O',
+            'O',
+            'B-PERSON',
+            'I-PERSON',
+        ]
+        
+        actual = pipeline._fix_incorrect_tags(input_tags)
+        print('actual:', actual)
+        self.assertEqual(actual, expected)
+
+
     def test_lst20_ner_grouped_entities_unstrict_1(self):
         space_token =  '<_>'
         pipeline = self.thainer_ner_pipeline
@@ -469,6 +498,7 @@ class TokenClassificationPipelineTest(unittest.TestCase):
         
         self.assertEqual(actual, expected)
 
+    
     def test_lst20_ner_grouped_entities_unstrict_2(self):
         space_token =  '<_>'
         pipeline = self.thainer_ner_pipeline
@@ -573,28 +603,6 @@ class TokenClassificationPipelineTest(unittest.TestCase):
 
         ]
         actual = pipeline._group_entities(input_ner_tags)        
-        self.assertEqual(actual, expected)
-
-    def test_lst20_ner_grouped_entities_unstrict_3(self):
-        space_token =  '<_>'
-        pipeline = self.thainer_ner_pipeline
-        pipeline.space_token = space_token
-        pipeline.lowercase = True
-        pipeline.group_entities = True
-        pipeline.strict = False
-        
-        input_ner_tags = [
-            ('กรุงเทพ', 'I-LOCATION'),
-            ('จังหวัด', 'B-LOCATION'),
-            ('กรุงเทพ', 'I-LOCATION'),
-            ('มกราคม', 'E-TIME'),
-        ]
-        expected = [
-            {'entity_group': 'LOCATION', 'word': 'กรุงเทพ'},
-            {'entity_group': 'LOCATION', 'word': 'จังหวัดกรุงเทพ'},
-            {'entity_group': 'TIME', 'word': 'มกราคม'},
-        ]
-        actual = pipeline._group_entities(input_ner_tags)
         self.assertEqual(actual, expected)
 
     def test_lst20_ner_grouped_entities_unstrict_4(self):
@@ -749,7 +757,7 @@ class TokenClassificationPipelineTest(unittest.TestCase):
             ('ทาง', 'O'),
             ('ใน', 'O'),
             ('เดือ', 'B-DATE'),
-            ('น', 'BBB-DATE'),
+            ('น', 'B-DATE'),
             ('มกรา', 'I-DATE'),
             ('คม', 'I-DATE')
         ]
